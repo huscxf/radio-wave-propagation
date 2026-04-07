@@ -1,0 +1,71 @@
+clear all;clc;
+% 参数
+f=18e8;
+lambda = 3e8/f; % 波长(m)
+k0 = 2*pi/lambda; % 自由空间波数
+dx = 20; % 水平步长(m)
+dz = 1; % 垂直步长(m)
+xmax = 100000; % 最大水平距离(m)
+zmax = 500; % 最大高度(m)
+hab=100;
+% 计算域离散化
+x = 0:dx:xmax; % 水平坐标
+z = 0:dz:zmax; % 垂直坐标
+Nx = length(x); % 水平网格数
+Nz = length(z); % 垂直网格数
+% 标准大气折射率模型
+n = 1+(330+0.118*z)/1e6;
+% 初始场设置（高斯波束）
+%参数
+z0 = 40; % 发射高度
+beta = 1*pi/360; % 波束宽度(rad)
+a = 0; %发射仰角
+p = k0*sin(a); %角频率量
+pj=(-zmax:dz:zmax)*pi/zmax;
+zj=-zmax:dz:zmax;
+%计算
+phi=k0*beta/(2*sqrt(2*pi*log(2)))*exp(-1i*k0*a*zj).*exp(-(beta*k0*(zj-z0)).^2/(8*log10(2)));
+%归一化，镜像
+min_val = min(phi);
+max_val = max(phi);
+phi = (phi - min_val) / (max_val - min_val);
+u0 = phi(zmax+1+z)-phi(zmax+1-z); % 初始场
+%方程参数初始化
+A=zeros(Nz-2,Nz-2);
+B=zeros(Nz-2,Nz-2);
+for j=2:Nz-1
+ A(j-1,j-1)=-2+4i*k0*(dz^2)/dx+
+(k0^2)*((n(j))-1)*(dz^2);
+ B(j-1,j-1)=2+4i*k0*(dz^2)/dx-
+(k0^2)*((n(j))-1)*(dz^2);
+if (j<Nz-1)
+ A(j,j-1)=1;A(j-1,j)=1;
+ B(j,j-1)=-1;B(j-1,j)=-1;
+end
+end
+transma=A\B;
+% 矩阵初始化
+u = zeros(Nx,Nz-2); 
+u(1,:) = u0(2:Nz-1)/1e40; % 设置初始场
+%指数衰减
+absorb_coeff = 0.2; 
+z_absorb_start = 400;
+absorb_layer = ones(Nz-2,1);
+for j = 1:Nz-2
+if z(j+1) > z_absorb_start
+ d = z(j+1) - z_absorb_start;
+ absorb_layer(j) = exp(-absorb_coeff * (d/(zmax-z_absorb_start))^2);
+end
+end
+for m = 1:Nx-1
+%递推
+ u(m+1,:)=transma*(u(m,:).').*absorb_layer;
+end
+Lp=zeros(401,Nx);
+for m=1:Nx
+for j=2:401
+ Lp(j,m)=32.4+20*log10(f/1e6)
++10*log10(m*dx/1e3)
+-20*log10(abs(u(m,j-1))*1e40);
+end
+end
